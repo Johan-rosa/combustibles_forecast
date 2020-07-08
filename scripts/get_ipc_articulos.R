@@ -57,7 +57,7 @@ crear_mes <- function(mes, type = "text_to_number") {
                              "Dic" = 12,
                              "Enero" = 01,
                              "Febrero" = 02,
-                             "Mararzo" = 03,
+                             "Marzo" = 03,
                              "Abril" = 04,
                              "Mayo" = 05,
                              "Junio" = 06,
@@ -73,31 +73,32 @@ crear_mes <- function(mes, type = "text_to_number") {
 }
 
 
+get_ipc_articulos <- function() {
+  articulos_detalle <- read_rds("data/articulos_detalles.rds")
+  
+  url <- "https://cdn.bancentral.gov.do/documents/estadisticas/precios/documents/ipc_articulos_base_2010.xlsx"
+  
+  temp_path <- tempfile(fileext = ".xlsx")
+  
+  download.file(url, temp_path, mode = "wb", quiet = TRUE)
+  
+  sheets <- stringr::str_subset(readxl::excel_sheets(temp_path), "METADATOS", negate = TRUE)
+  
+  ipc_articulos_long <- purrr::map(
+    sheets,
+    ~suppressMessages(read_excel(temp_path, sheet = .x, skip = 4)) %>%
+      janitor::remove_empty(which = "cols") %>% 
+      janitor::clean_names() %>% 
+      rename(name = x1, ponderador = x2) %>% 
+      tidyr::pivot_longer(-c(name, ponderador), names_to = "mes", values_to = "indice")
+  ) %>% 
+    setNames(readr::parse_number(sheets)) %>% 
+    dplyr::bind_rows(.id = "year") %>% 
+    left_join(articulos_detalle)   
+  
+  return(ipc_articulos_long)
+  }
 
-
-
-articulos_detalle <- read_rds("data/articulos_detalles.rds")
-
-url <- "https://cdn.bancentral.gov.do/documents/estadisticas/precios/documents/ipc_articulos_base_2010.xlsx"
-
-temp_path <- tempfile(fileext = ".xlsx")
-
-download.file(url, temp_path, mode = "wb")
-
-sheets <- stringr::str_subset(readxl::excel_sheets(temp_path), "METADATOS", negate = TRUE)
-
-
-ipc_articulos_long <- purrr::map(
-  sheets,
-  ~read_excel(temp_path, sheet = .x, skip = 4) %>%
-    janitor::remove_empty(which = "cols") %>% 
-    janitor::clean_names() %>% 
-    rename(name = x1, ponderador = x2) %>% 
-    tidyr::pivot_longer(-c(name, ponderador), names_to = "mes", values_to = "indice")
-) %>% 
-  setNames(readr::parse_number(sheets)) %>% 
-  dplyr::bind_rows(.id = "year") %>% 
-  left_join(articulos_detalle) %>% 
   
 
 
