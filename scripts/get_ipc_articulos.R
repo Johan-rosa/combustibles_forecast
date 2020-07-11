@@ -3,7 +3,7 @@ crear_mes <- function(mes, type = "text_to_number") {
   `%>%` <- magrittr::`%>%`
   
   if(type == "number_to_text") {
-    
+  
     new_mes <- dplyr::recode(mes,
                              `1` = "Enero",
                              `2` = "Febrero",
@@ -86,7 +86,7 @@ get_ipc_articulos <- function() {
   
   ipc_articulos_long <- purrr::map(
     sheets,
-    ~suppressMessages(read_excel(temp_path, sheet = .x, skip = 4)) %>%
+    ~suppressMessages(readxl::read_excel(temp_path, sheet = .x, skip = 4)) %>%
       janitor::remove_empty(which = "cols") %>% 
       janitor::clean_names() %>% 
       rename(name = x1, ponderador = x2) %>% 
@@ -94,12 +94,37 @@ get_ipc_articulos <- function() {
   ) %>% 
     setNames(readr::parse_number(sheets)) %>% 
     dplyr::bind_rows(.id = "year") %>% 
-    left_join(articulos_detalle)   
+    left_join(articulos_detalle, by = c("name" = "nombre", "ponderador"))   
   
   return(ipc_articulos_long)
   }
 
+ # Creada por Rob Hyndman 
+benchmarks <- function(y, h = 1) {
+  require(forecast)
+  # Compute four benchmark methods
+  fcasts <- rbind(
+    Naive = snaive(y, h)$mean,
+    ETS = forecast(ets(y), h)$mean,
+    Arima = forecast(auto.arima(y), h)$mean,
+    T = thetaf(y, h)$mean)
   
+  colnames(fcasts) <- seq(h)
+  method_names <- rownames(fcasts)
+  # Compute all possible combinations
+  method_choice <- rep(list(0:1), length(method_names))
+  names(method_choice) <- method_names
+  combinations <- expand.grid(method_choice) %>% tail(-1) %>% as.matrix()
+  # Construct names for all combinations
+  for (i in seq(NROW(combinations))) {
+    rownames(combinations)[i] <- paste0(method_names[which(combinations[i, ] > 0)],
+                                        collapse = " ")
+  }
+  # Compute combination weights
+  combinations <- sweep(combinations, 1, rowSums(combinations), FUN = "/")
+  # Compute combinations of forecasts
+  return(combinations %*% fcasts)
+}
 
 
 
