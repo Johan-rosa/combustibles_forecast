@@ -6,12 +6,20 @@ library(lubridate)
 library(janitor)
 
 # time series and forecasting
+library(forecast)
+library(timetk)
+library(sweep)
+library(scico)
+
+# Tidy time series
 library(tsibble)
 library(fable)
 library(fabletools)
 library(feasts)
 
-library(scico)
+# Tablas HTML
+library(kableExtra)
+library(formattable)
 
 # Importar y preparar data --- ----------------------------------------------
 
@@ -26,7 +34,7 @@ last_date <- last(pull(combustibles, fecha))
 
 # secuencia de fechas desde marzo del 2001
 combustibles_diarios <- tibble(fecha = seq(from = ymd("2001-03-20"), to = Sys.Date(), by = "day")) %>% 
-  # se resta cuatro para llevar las fechas de día miércoles de cada semana,
+  # se resta cuatro para llevar las fechas de miércoles de cada semana,
   # al sábado anterior
   left_join(mutate(combustibles, fecha = fecha - 4)) %>%
   fill(-fecha, .direction = "down") %>% 
@@ -56,7 +64,7 @@ precios <- combustibles_month %>%
 # crea funciones útiles
 source("scripts/get_ipc_articulos.R")
 
-# Descarga la data del ipc a todos lo niveles de desagregación posible
+# Descarga la data del ipc a todos lo niveles de desagregaciÃ³n posible
 ipc_desagregado <- get_ipc_articulos()
 
 # adecuando algunos campos para tener el árbol ascendente de cada artículo
@@ -105,7 +113,8 @@ combustibles_nested <- ipc_combustibles %>%
   group_by(name, division, ponderador) %>% 
   nest() 
 
-combustibles_nested %>% 
+# Creando los elementos para el forecast de cada serie
+combustibles_nested <- combustibles_nested %>% 
   mutate(
     # serie de tiempo
     ts = map(
@@ -121,19 +130,131 @@ combustibles_nested %>%
       ~list(
         auto.arima = list(y = .x),
         ets = list(y = .x),
-        bats = list(y = .x),
-        thetaf = list(y = .x)
+        bats = list(y = .x)
         )
     ),
     
+    # poniendo los parametros en una forma tabular
     params = map(params, enframe, name = "f", value = "params"),
     
-    # Fiting models
+    # estimando los modelos
     models = map(
       params,
       ~.x %>% mutate(fit = invoke_map(f, params))
+      ),
+    
+    # Forecast de cada modelo
+    models = map(models, ~mutate(.x, fcast = map(fit, forecast, h = 1))),
+    
+    # agregando una versión tidy del forecast de cada modelo
+    models = map(
+      models,
+      ~.x %>%
+        mutate(
+          sweep = map(
+            fcast,
+            sw_sweep,
+            fitted = FALSE,
+            timetk_index = TRUE,
+            rename_index = "date"
+          )
+        )
     ),
     
-    # Foreacast
-    
+    sweep = map(
+      models, ~.x %>% 
+        select(f, sweep) %>% 
+        unnest(sweep)
+    )
   )
+
+combustibles_glamce <- combustibles_nested %>% 
+select(models) %>% 
+  unnest(models) %>%
+  mutate(
+   glance =  map(fit, sw_glance)
+  ) %>% 
+  select(name, glance) %>% 
+  unnest(glance)
+
+combustibles_augment <- combustibles_nested %>% 
+  select(models) %>% 
+  unnest(models) %>% 
+  mutate(augment = map(fit, sw_augment, rename_index = "date")) %>% 
+  ungroup() %>% 
+  select(name, f, augment) %>% 
+  unnest(augment)
+
+combustibles_augment %>% 
+  ggplot(aes(x = date, y = .resid)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth() +
+  theme_light() +
+  facet_grid(str_wrap(name, 15) ~ f)
+
+
+# Tabla html con el resumen de cada modelo
+combustibles_glamce %>% 
+  mutate_if(is.numeric, round, digits = 5) %>% 
+  ungroup() %>% 
+  select(model.desc:ACF1) %>% 
+  kableExtra::kable() %>% 
+  kableExtra::kable_styling(bootstrap_options = c("striped", "hover", "condensed")) %>% 
+    pack_rows("Combustibles y lubricantes para vehículos", 1, 3) %>% 
+  pack_rows("Gasoil", 4, 6) %>% 
+  pack_rows("Gasolina premium", 7, 9) %>% 
+  pack_rows("Gasolina regular", 10, 12) %>%
+  pack_rows("GLP", 13, 15) %>% 
+  pack_rows("Lubricantes y aceites para vehículos", 16, 18)
+  
+
+# Modeling de la serie con el dato observado
+combustibles_nested_xreg <-  combustibles_precio_indice %>% 
+  group_by(name) %>% 
+  summarise(date_ym, across(c(indice, precio), .fns =  ~(. / lag(.) - 1))) %>% 
+  slice(-1) %>% 
+  nest() %>% 
+  mutate(
+    indice_ts = map(data, ~select(.x, indice) %>% ts(start = c(2011, 2), frequency = 12)),
+    precio_ts = map(data, ~select(.x, precio) %>% ts(start = c(2011, 2), frequency = 12)),
+    model = map2(indice_ts, precio_ts, ~auto.arima(.x, xreg = .y)),
+    glance = map(model, sw_glance),
+    augment = map(model, sw_augment)
+  )
+
+combustibles_nested_xreg %>% 
+  select(name, glance) %>% 
+  unnest(glance)
+
+combustibles_nested_xreg %>% 
+  select(name, augment) %>% 
+  unnest(augment) %>% 
+  mutate(origen = "xreg") %>% 
+  bind_rows(
+    filter(
+      combustibles_augment,
+      name %in% c("Gasoil", "Gasolina premium", "Gasolina regular", "GLP"),
+      f == "auto.arima") %>%
+      rename(index = date) %>% 
+      select(-f) %>% 
+      mutate(origen = "simple")
+  ) %>% 
+  ggplot(aes(x = index, y = .resid)) +
+  #geom_point() +
+  geom_line() +
+  facet_grid(name ~ origen, scales = 'free_y') +
+  theme_light()
+
+#save.image("data/forecasting_ws")
+
+mtcars %>% 
+  group_by(cyl) %>% 
+  summarise(
+    across(c(mpg, disp, wt), mean),
+    across(c(am, gear, carb), median)
+  )
+
+
+
+

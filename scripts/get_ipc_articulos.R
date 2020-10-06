@@ -55,6 +55,7 @@ crear_mes <- function(mes, type = "text_to_number") {
                              "Oct" = 10,
                              "Nov" = 11,
                              "Dic" = 12,
+                             
                              "Enero" = 01,
                              "Febrero" = 02,
                              "Marzo" = 03,
@@ -66,15 +67,27 @@ crear_mes <- function(mes, type = "text_to_number") {
                              "Septiembre" = 09,
                              "Octubre" = 10,
                              "Noviembre" = 11,
-                             "Diciembre" = 12)
+                             "Diciembre" = 12,
+                             
+                             "January" = 01,
+                             "February" = 02,
+                             "March" = 03,
+                             "April" = 04,
+                             "May" = 05,
+                             "June" = 06,
+                             "July" = 07,
+                             "August" = 08,
+                             "September" = 09,
+                             "October" = 10,
+                             "November" = 11,
+                             "December" = 12)
   }
   
   return(new_mes)
 }
-
+articulos_detalle <- read_rds(here::here('data', 'articulos_detalles.rds'))
 
 get_ipc_articulos <- function() {
-  articulos_detalle <- read_rds("data/articulos_detalles.rds")
   
   url <- "https://cdn.bancentral.gov.do/documents/estadisticas/precios/documents/ipc_articulos_base_2010.xlsx"
   
