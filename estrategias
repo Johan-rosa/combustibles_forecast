@@ -1,0 +1,205 @@
+
+InfMesBCRD
+
+# *********************************************************************
+# OJO: Correr el bucle desde aqui 
+# *********************************************************************
+Resul_Arima_no_estacional <- c(); Resul_Arima_con_estacional <- c(); Resul_Arima_Box_Cox <- c();
+Resul_Furier <- c(); Resul_SArima_BoxCox<- c();  resul_arfima <- c();
+Resul_Naive <- c(); Resul_sNaive <- c();
+Resul_set <- c(); 
+Resul_stl <- c(); Resul_stlm <- c(); Resul_stlf <- c();
+Resul_ets <- c(); Resul_ets1<-c(); 
+Resul_ARMAGARCH <- c(); Resul_ARMAGARCHstd <- c(); Resul_ARMAgjrGARCHstd <-c();
+Resul_bayesianoMean <-c(); Resul_bayesianoMedian <-c();
+Resul_tbats <- c();
+Resul_setar <- c();
+
+# ***************************************
+
+for (obs in (ventana-1):t){ #
+  
+  print(paste("Avance: ", c/25, "%", sep = ""))
+  
+  x<-ts(InfMesBCRD[1:obs], frequency = 12, start = c(2011,2))
+  
+  n.train <- length(x) 
+  difDisMes.train <-  ts(x[1:n.train], frequency = 12, start = c(2011,2))
+  
+  n.train <- length(x) 
+  difDisMes.train <-  ts(x[1:n.train], frequency = 12, start = c(2011,2))
+  
+  #ARIMA sin componente estacional
+  autoArima.agregado<-auto.arima(difDisMes.train, seasonal=F, ic ="aic")
+  fcast.ARIMAagre <- forecast::forecast(autoArima.BoxCox, h=n.valid)
+  Resul_Arima_no_estacional <-c(Resul_Arima_no_estacional, fcast.ARIMAagre$mean) 
+  
+  #SARIMA
+  autoSArima.agregado<-auto.arima(difDisMes.train, seasonal=T, ic ="aic")
+  fcast.SARIMAagre <- forecast::forecast(autoSArima.agregado, h=n.valid)
+  Resul_Arima_con_estacional <-c(Resul_Arima_con_estacional, fcast.SARIMAagre$mean) 
+  
+  #SARIMA Box.Cox
+  lamb.x <- BoxCox.lambda(difDisMes.train)
+  autoArima.BoxCox<-auto.arima(difDisMes.train, seasonal=T, lambda = lamb.x, ic ="aic")
+  fcast.SARIMABoxCoxagre <- forecast::forecast(autoArima.BoxCox, h=n.valid)
+  Resul_SArima_BoxCox <-c(Resul_SArima_BoxCox, fcast.SARIMABoxCoxagre$mean) 
+  
+  # Simple exponential smoothing: Level Only
+  Fit <- auto.arima(difDisMes.train, seasonal=FALSE, xreg=fourier(difDisMes.train,4))
+  fcast.SARIMAFurier <-forecast::forecast(Fit, h=n.valid, xreg=fourierf(difDisMes.train,4,n.valid))
+  Resul_Furier <-c(Resul_Furier, fcast.SARIMAFurier$mean) 
+  
+  # Naive
+  naive.fit<- naive(difDisMes.train, h=n.valid)
+  fcast.NAIVE <-forecast::forecast(naive.fit, h=n.valid)
+  Resul_Naive <-c(Resul_Naive, fcast.NAIVE$mean) 
+  
+  # SNaive
+  snaive.fit<- snaive(difDisMes.train, h=n.valid)
+  fcast.sNAIVE <-forecast::forecast(snaive.fit, h=n.valid)
+  Resul_sNaive <-c(Resul_sNaive, fcast.sNAIVE$mean)  
+  
+  # Modelo Simple exponential smoothing: no trend. 
+  model5a <- ses(difDisMes.train) 
+  fcast.set <- forecast::forecast(model5a, h=n.valid)
+  Resul_set <-c(Resul_set, fcast.set$mean) 
+  
+  # STL: Seasonal Decomposition of Time Series by Loess
+  fit.stl <- stl(difDisMes.train, t.window=12, s.window="periodic")
+  fcast.stl.naive <- forecast::forecast(fit.stl, method="naive", h=n.valid) 
+  Resul_stl <-c(Resul_stl, fcast.stl.naive$mean) 
+  
+  # STLm: Seasonal Decomposition of Time Series by Loess
+  fit.stlm <- stlm(difDisMes.train, modelfunction=ar)
+  fcast.stlm.naive <- forecast::forecast(fit.stlm, method="naive", h=n.valid) 
+  Resul_stlm <-c(Resul_stlm, fcast.stlm.naive$mean) 
+  
+  # STLf: Seasonal Decomposition of Time Series by Loess
+  fit.stlf <- stlf(difDisMes.train)
+  fcast.stlf.naive <- forecast::forecast(fit.stlf, method="naive", h=n.valid) 
+  Resul_stlf <-c(Resul_stlf, fcast.stlf.naive$mean) 
+  
+  # ____________________________________________________________________________________
+  # The first letter denotes the error type ("A", "M" or "Z"); 
+  # the second letter denotes the trend type ("N","A","M" or "Z"); 
+  # and the third letter denotes the season type ("N","A","M" or "Z").
+  #  ETS(Error,Trend,Seasonal) 
+  
+  # Métodos Exponential smoothing ETS. Error, trend, seasonality - ets and its forecast model friends
+  fit.ets <-  ets(difDisMes.train, model="AAN")
+  fcast.fit.ets <- forecast::forecast(fit.ets, h=n.valid) 
+  Resul_ets <-c(Resul_ets, fcast.fit.ets$mean)   
+  
+  # Métodos [2] Exponential smoothing ETS. Error, trend, seasonality - ets and its forecast model friends  
+  fit.ets1 <-  ets(difDisMes.train, model="ANN")
+  fcast.fit.ets1 <- forecast::forecast(fit.ets1, h=n.valid) 
+  Resul_ets1 <-c(Resul_ets1, fcast.fit.ets1$mean) 
+  
+  # ARMA(1,1)+GARCH(1+1)+norm
+  model <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)), 
+                      mean.model = list(armaOrder = c(1, 1), include.mean = TRUE), 
+                      distribution.model = "norm" ) 
+  
+  modelfit=ugarchfit(spec=model,data=difDisMes.train) 
+  fit.garma.garch<-ugarchforecast(modelfit, n.ahead = n.valid) 
+  
+  fvalores<-as.vector(fit.garma.garch@forecast$seriesFor)
+  Resul_ARMAGARCH <-c(Resul_ARMAGARCH, fvalores)   
+  
+  # ARMA(1,1)+GARCH(1+1)+norm
+  modelstd <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)), 
+                         mean.model = list(armaOrder = c(1, 1), include.mean = TRUE), 
+                         distribution.model = "std" ) 
+  
+  modelfitstd=ugarchfit(spec=modelstd,data=difDisMes.train) 
+  fit.garma.garchstd<-ugarchforecast(modelfitstd, n.ahead = n.valid) 
+  
+  fvaloresstd<-as.vector(fit.garma.garchstd@forecast$seriesFor)
+  Resul_ARMAGARCHstd <-c(Resul_ARMAGARCHstd, fvaloresstd) 
+  
+  # ARMA(1,0)+gjrGARCH(1+1)+norm
+  modelgjr <- ugarchspec(variance.model = list(model = "gjrGARCH", garchOrder = c(1, 1)), 
+                         mean.model = list(armaOrder = c(1, 0), include.mean = TRUE), 
+                         distribution.model = "norm" ) 
+  
+  modelfitgjr=ugarchfit(spec=modelgjr,data=difDisMes.train) 
+  fit.garma.gjrgarchstd<-ugarchforecast(modelfitgjr, n.ahead = n.valid) 
+  
+  fvaloresstdgjr<-as.vector(fit.garma.gjrgarchstd@forecast$seriesFor)
+  Resul_ARMAgjrGARCHstd <-c(Resul_ARMAgjrGARCHstd, fvaloresstdgjr) 
+  
+  # Bayesian Structural Time Series:  State Space representation
+  Trend_Seasonal_states <- AddSemilocalLinearTrend(list(),difDisMes.train)
+  Trend_Seasonal_states <- AddSeasonal(Trend_Seasonal_states, difDisMes.train, nseasons = 12)
+  inflacionBSTS <- bsts(difDisMes.train, state.specification = Trend_Seasonal_states, niter = 1000)
+  
+  BSTSForecasts <- predict.bsts(inflacionBSTS, horizon = n.valid)
+  
+  Resul_bayesianoMean <-c(Resul_bayesianoMean, BSTSForecasts$mean) 
+  Resul_bayesianoMedian <-c(Resul_bayesianoMedian, BSTSForecasts$median) 
+  
+  # ARFIMA
+  arma_spec = arfimaspec(mean.model = list(armaOrder = c(1,0), 
+                                           include.mean = TRUE), 
+                         distribution.model = "norm")
+  
+  fit.ARFIMA <- arfimafit(spec = arma_spec, data = difDisMes.train)
+  fcast.ARFIMA <- arfimaforecast(fit.ARFIMA, n.ahead = n.valid, n.roll = 0)
+  fvalores<-as.vector(fcast.ARFIMA@forecast$seriesFor)
+  
+  resul_arfima <-c(resul_arfima, fvalores) 
+  
+  # TBATS forecasts
+  fit.tbats <- tbats(difDisMes.train)
+  fcast.tbats <- forecast::forecast(fit.tbats, method="naive", h=n.valid) 
+  Resul_tbats <-c(Resul_tbats, fcast.tbats$mean) 
+  
+  #  setar
+  # https://cran.r-project.org/web/packages/tsDyn/vignettes/tsDyn.pdf
+  dataSETAR<-selectSETAR(difDisMes.train, m=3, mL=1:3, mH=1:3, thSteps = 5, thDelay=0:2)
+  m<-dataSETAR$ML
+  
+  obj <- setar(difDisMes.train, m=2, d=1, steps=1, thDelay=1, th=0)
+  x.new <- predict(obj, n.ahead = 1)
+  Resul_setar <-c(Resul_setar, x.new) 
+  
+  # Markov-GARCH Markov-Switching GARCH Models 
+  #spec <- CreateSpec(variance.spec = list(model = c("sGARCH", "tGARCH")), 
+  #                   distribution.spec = list(distribution = c("snorm", "std")))
+  
+  # spec <- CreateSpec()
+  # fit.ml <- FitMCMC(spec = spec, data = difDisMes.train) 
+  # pred <- predict(fit.ml, nahead = 2, do.return.draws = TRUE)
+  
+  # ***************************************
+}
+
+options(scipen=0)
+
+# Evaluación del modelo
+evaluacion<-EvaluacionBCRD(f=yhatMIPA1, x=yobs) #Validar
+evaluacion<-rbind(evaluacion, f.ARIMA.agre=EvaluacionBCRD(Resul_Arima_no_estacional, x=yobs))
+evaluacion<-rbind(evaluacion, f.SARIMA.agre=EvaluacionBCRD(Resul_Arima_con_estacional, x=yobs))
+evaluacion<-rbind(evaluacion, Resul_SArima_BoxCox=EvaluacionBCRD(Resul_SArima_BoxCox, x=yobs))
+evaluacion<-rbind(evaluacion, Resul_SArima_Furier=EvaluacionBCRD(Resul_Furier, x=yobs))
+evaluacion<-rbind(evaluacion, Naive=EvaluacionBCRD(Resul_Naive, x=yobs))
+evaluacion<-rbind(evaluacion, SNaive=EvaluacionBCRD(Resul_sNaive, x=yobs))
+evaluacion<-rbind(evaluacion, SETe=EvaluacionBCRD(Resul_set, x=yobs))
+evaluacion<-rbind(evaluacion, STL=EvaluacionBCRD(Resul_stl, x=yobs))
+evaluacion<-rbind(evaluacion, STLm=EvaluacionBCRD(Resul_stlm, x=yobs))
+evaluacion<-rbind(evaluacion, STLf=EvaluacionBCRD(Resul_stlf, x=yobs))
+evaluacion<-rbind(evaluacion, etsAAN=EvaluacionBCRD(Resul_ets, x=yobs))
+evaluacion<-rbind(evaluacion, etsANN=EvaluacionBCRD(Resul_ets1, x=yobs))
+evaluacion<-rbind(evaluacion, arma11.garch11.norm=EvaluacionBCRD(Resul_ARMAGARCH, x=yobs))
+evaluacion<-rbind(evaluacion, arma11.garch11.std=EvaluacionBCRD(Resul_ARMAGARCHstd, x=yobs))
+evaluacion<-rbind(evaluacion, arma11.gjr.garch11.std=EvaluacionBCRD(Resul_ARMAgjrGARCHstd, x=yobs))
+evaluacion<-rbind(evaluacion, Bayesiano.EE.mean=EvaluacionBCRD(Resul_bayesianoMean, x=yobs))
+evaluacion<-rbind(evaluacion, Bayesiano.EE.median=EvaluacionBCRD(Resul_bayesianoMedian, x=yobs))
+evaluacion<-rbind(evaluacion, ARFIMA=EvaluacionBCRD(resul_arfima, x=yobs))
+evaluacion<-rbind(evaluacion, tbats=EvaluacionBCRD(Resul_tbats, x=yobs))
+evaluacion<-rbind(evaluacion, SETAR=EvaluacionBCRD(Resul_setar, x=yobs))
+
+
+evaluacionExcel<-data.frame(nombres=rownames(evaluacion), evaluacion)
+write_xlsx(evaluacionExcel, "mydata_ComparaEstrategias.xlsx")
