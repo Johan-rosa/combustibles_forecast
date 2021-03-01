@@ -14,3 +14,20 @@ for(i in 1:25)
 }
 fc <- forecast(bestfit, xreg=fourier(gas, K=12, h=104))
 plot(fc)
+
+
+# Crossvalidation ---------------------------------------------------------
+
+library(forecast)
+library(tidyverse)
+library(fpp2)
+
+
+# Subset data
+arimaFC <- function(x, h){
+  forecast(auto.arima(x), h = h)
+  }
+
+e <- tsCV(y = goog200, forecastfunction = arimaFC, h = 3)
+
+sqrt(mean(e^2, na.rm=TRUE))
